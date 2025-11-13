@@ -1,4 +1,5 @@
 from schema import GomokuState, Stone, WIDTH, HEIGHT, TurnType
+from typing import Optional  # Optional 임포트 추가
 
 
 class Gomoku:
@@ -38,7 +39,7 @@ class Gomoku:
         return self._history
 
     def _check_win(self, x: int, y: int) -> bool:
-        stone_type = self._state.board[y][x]
+        stone_type: Optional[TurnType] = self._state.board[y][x]
         if stone_type is None:
             return False
 
@@ -70,3 +71,42 @@ class Gomoku:
             if count >= 5:
                 return True
         return False
+
+    # --- 추가된 메서드 ---
+    def visualize_board(self) -> str:
+        """
+        현재 게임 보드를 텍스트 형식의 문자열로 생성합니다.
+        ●: 검은 돌
+        ○: 흰 돌
+        +: 빈 칸
+        """
+        # 각 상태에 맞는 심볼을 정의합니다.
+        symbols = {
+            "BLACK": "●",
+            "WHITE": "○",
+            None: "+",
+        }
+
+        # 최종 결과를 담을 문자열 리스트를 생성합니다.
+        board_lines = []
+
+        # 열 번호 헤더를 만듭니다 (e.g., "   0  1  2 ...")
+        # 행 번호(예: '14 ')와 정렬을 맞추기 위해 앞부분에 공백을 추가합니다.
+        header = "   " + " ".join(f"{i:<2}" for i in range(WIDTH))
+        board_lines.append(header)
+
+        # 각 행을 순회하며 문자열을 만듭니다.
+        for y in range(HEIGHT):
+            # 행 번호를 왼쪽에 추가하고, 두 자리로 정렬합니다.
+            row_str = f"{y:>2} "
+
+            # 해당 행의 각 칸을 순회합니다.
+            for x in range(WIDTH):
+                stone = self._state.board[y][x]
+                # 심볼과 공백을 추가하여 정렬을 맞춥니다.
+                row_str += symbols[stone] + "  "
+
+            board_lines.append(row_str)
+
+        # 모든 라인을 개행 문자로 합쳐 하나의 문자열로 반환합니다.
+        return "\n".join(board_lines)

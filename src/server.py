@@ -15,6 +15,12 @@ def restart() -> GomokuState:
 
 
 @mcp.tool
+def visualize() -> str:
+    """Visualize current state of the board"""
+    return gomoku_game.visualize_board()
+
+
+@mcp.tool
 def get_state() -> GomokuState:
     """Gets the current state of the gomoku game."""
     return gomoku_game.get_state()
