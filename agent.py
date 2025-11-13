@@ -4,8 +4,11 @@ import json
 import asyncio
 from typing import Any
 from openai import OpenAI
+import multiprocessing
 
-from fastmcp.client import Client
+from server import get_mcp_server
+from client import get_mcp_client
+from web import WebManager
 
 # --- 설정 ---
 
@@ -15,96 +18,37 @@ if not api_key:
     print("❌ 오류: OPENROUTER_API_KEY 환경 변수가 설정되지 않았습니다.")
     sys.exit(1)
 
-# 2. OpenRouter 클라이언트 생성
 openrouter_client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
     api_key=api_key,
 )
 
-# 3. 사용할 모델 이름 설정
 MODEL_NAME = "google/gemini-2.5-flash"
 
 
-def to_openai_schema(tool) -> dict:
-    """
-    FastMCP 도구를 OpenAI/OpenRouter 형식으로 변환합니다.
-    """
-    raw_schema = (
-        getattr(tool, "inputSchema", None)
-        or getattr(tool, "input_schema", None)
-        or getattr(tool, "parameters", None)
-    )
+def run_web_server(client):
 
-    if raw_schema is None:
-        schema: dict = {
-            "type": "object",
-            "properties": {},
-            "additionalProperties": True,
-        }
-
-    elif isinstance(raw_schema, dict):
-        schema = raw_schema
-
-    elif hasattr(raw_schema, "model_json_schema"):
-        schema = raw_schema.model_json_schema()
-
-    elif isinstance(raw_schema, list):
-        props, required = {}, []
-        for p in raw_schema:
-            props[p["name"]] = {
-                "type": p["type"],
-                "description": p.get("description", ""),
-            }
-            if p.get("required", True):
-                required.append(p["name"])
-        schema = {"type": "object", "properties": props}
-        if required:
-            schema["required"] = required
-
-    else:
-        schema = {"type": "object", "properties": {}, "additionalProperties": True}
-
-    schema.setdefault("type", "object")
-    schema.setdefault("properties", {})
-    if "required" not in schema:
-        schema["required"] = list(schema["properties"].keys())
-
-    # OpenRouter가 기대하는 형식으로 반환
-    return {
-        "type": "function",
-        "function": {
-            "name": tool.name,
-            "description": getattr(tool, "description", ""),
-            "parameters": schema,
-        },
-    }
+    web_server = WebManager(client)
+    web_server.run_server()
+    # server_process = multiprocessing.Process(
+    #     target=web_server.run_server, args=("127.0.0.1", 8000)
+    # )
+    # server_process.daemon = True
+    # server_process.start()
+    # print(f"서버 프로세스 (PID: {server_process.pid})가 백그라운드에서 시작되었습니다.")
 
 
 async def run_gomoku_agent():
     """OpenRouter와 FastMCP를 사용하여 오목 게임을 플레이하는 에이전트"""
-    try:
-        mcp_client = Client("src/server.py")
-        print(f"✅ Gomoku 서버 프로세스를 생성했습니다.")
 
-    except Exception as e:
-        print(f"❌ 오류: Gomoku 서버 프로세스를 시작할 수 없습니다.")
-        print(f"   에러 상세: {e}")
-        return
+    mcp_client = get_mcp_client()
+    print(f"✅ Gomoku 서버 프로세스를 생성했습니다.")
 
-    # async with 컨텍스트 매니저로 클라이언트 연결
     async with mcp_client:
-        # FastMCP 클라이언트에서 도구 목록을 가져옵니다.
-        mcp_tools = await mcp_client.list_tools()
 
-        # MCP 형식을 OpenAI/OpenRouter 형식으로 변환
-        gomoku_tools = [to_openai_schema(tool) for tool in mcp_tools]
+        run_web_server(mcp_client)
+        print(f"✅ Gomoku 웹 서버를 생성했습니다.")
 
-        print("✅ Gomoku 서버로부터 사용 가능한 함수(Tools) 목록을 가져왔습니다.")
-        print(f"   변환된 도구 개수: {len(gomoku_tools)}")
-
-    # async with 컨텍스트 매니저로 클라이언트 연결
-    async with mcp_client:
-        # FastMCP 클라이언트에서 OpenAI 호환 형식의 tool 목록을 가져옵니다.
         gomoku_tools = await mcp_client.list_tools()
         print("✅ Gomoku 서버로부터 사용 가능한 함수(Tools) 목록을 가져왔습니다.")
 
@@ -163,9 +107,11 @@ async def run_gomoku_agent():
                         print(f"⚡️ Calling function: {function_name}({function_args})")
 
                         try:
-                            function_to_call = getattr(mcp_client, function_name)
-                            # await를 사용하여 비동기 함수 호출
-                            function_response = await function_to_call(**function_args)
+                            function_response = mcp_client.call_tool(
+                                function_name, function_args
+                            )
+                            # function_to_call = getattr(mcp_client, function_name)
+                            # function_response = await function_to_call(**function_args)
                         except Exception as e:
                             print(f"    - Function call error: {e}")
                             function_response = f"Error executing function: {e}"

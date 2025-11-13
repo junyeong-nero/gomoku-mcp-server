@@ -1,3 +1,6 @@
+from gomoku import Gomoku
+
+
 def main():
     print("Hello from gomoku-mcp-server!")
 

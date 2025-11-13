@@ -1,5 +1,5 @@
 from schema import GomokuState, Stone, WIDTH, HEIGHT, TurnType
-from typing import Optional  # Optional 임포트 추가
+from typing import Optional
 
 
 class Gomoku:

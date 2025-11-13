@@ -5,9 +5,11 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "fastapi>=0.121.1",
     "fastmcp>=2.13.0.2",
     "google>=3.0.0",
     "openai>=2.7.2",
+    "pytest>=9.0.1",
 ]
 
 [tool.setuptools.packages.find]
