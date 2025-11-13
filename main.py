@@ -25,10 +25,6 @@ def create_sample_gomoku_state():
         "board": board,
         "stones": stones,
     }
-
-    temp = GomokuState.model_validate(game_state)
-    print(temp)
-
     return game_state
 
 

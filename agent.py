@@ -2,15 +2,16 @@ import os
 import sys
 import json
 import asyncio
-from typing import Any
+import requests
+from typing import Any, Dict
 from openai import OpenAI
-import multiprocessing
 
 from server import get_mcp_server
 from client import get_mcp_client
-from web import WebManager
+from schema import GomokuState
 
 # --- 설정 ---
+API_URL = "http://127.0.0.1:8000/api/state"
 
 # 1. OpenRouter API 키 설정
 api_key = os.environ.get("OPENROUTER_API_KEY")
@@ -26,16 +27,72 @@ openrouter_client = OpenAI(
 MODEL_NAME = "google/gemini-2.5-flash"
 
 
-def run_web_server(client):
+def send_state(state_data: dict):
+    """현재 게임 상태를 FastAPI 서버로 POST"""
+    try:
+        response = requests.post(API_URL, json=state_data)
+        response.raise_for_status()
+        print("✅ 상태 업데이트 성공!")
+        print("서버 응답:", response.json())
+    except requests.exceptions.RequestException as e:
+        print(f"❌ 상태 업데이트 실패: {e}")
+        if e.response:
+            print("서버 응답 내용:", e.response.text)
 
-    web_server = WebManager(client)
-    web_server.run_server()
-    # server_process = multiprocessing.Process(
-    #     target=web_server.run_server, args=("127.0.0.1", 8000)
-    # )
-    # server_process.daemon = True
-    # server_process.start()
-    # print(f"서버 프로세스 (PID: {server_process.pid})가 백그라운드에서 시작되었습니다.")
+
+def to_openai_schema(tool) -> Dict[str, Any]:
+    # 입력 스키마 추출
+    raw_schema = (
+        getattr(tool, "inputSchema", None)
+        or getattr(tool, "input_schema", None)
+        or getattr(tool, "parameters", None)
+    )
+
+    # 다양한 형태를 dict(JSON-Schema) 로 통일
+    if raw_schema is None:
+        schema: Dict[str, Any] = {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": True,
+        }
+
+    elif isinstance(raw_schema, dict):
+        schema = raw_schema
+
+    elif hasattr(raw_schema, "model_json_schema"):  # Pydantic v2 모델
+        schema = raw_schema.model_json_schema()
+
+    elif isinstance(raw_schema, list):  # list[dict]
+        props, required = {}, []
+        for p in raw_schema:
+            props[p["name"]] = {
+                "type": p["type"],
+                "description": p.get("description", ""),
+            }
+            if p.get("required", True):
+                required.append(p["name"])
+        schema = {"type": "object", "properties": props}
+        if required:
+            schema["required"] = required
+
+    else:  # 알 수 없는 형식
+        schema = {"type": "object", "properties": {}, "additionalProperties": True}
+
+    # 필수 키 보강
+    schema.setdefault("type", "object")
+    schema.setdefault("properties", {})
+    if "required" not in schema:
+        schema["required"] = list(
+            schema["properties"].keys()
+        )  # 모두 optional 로 두고 싶다면 []
+
+    # OpenAI 툴 JSON 반환
+    return {
+        "type": "function",
+        "name": tool.name,
+        "description": getattr(tool, "description", ""),
+        "parameters": schema,
+    }
 
 
 async def run_gomoku_agent():
@@ -46,10 +103,10 @@ async def run_gomoku_agent():
 
     async with mcp_client:
 
-        run_web_server(mcp_client)
         print(f"✅ Gomoku 웹 서버를 생성했습니다.")
 
         gomoku_tools = await mcp_client.list_tools()
+        # gomoku_tools = [to_openai_schema(tool) for tool in gomoku_tools]
         print("✅ Gomoku 서버로부터 사용 가능한 함수(Tools) 목록을 가져왔습니다.")
 
         print("\n==============================================")
@@ -59,7 +116,6 @@ async def run_gomoku_agent():
         print("예: '게임 시작해줘', '지금 보드 상태 보여줘', '7, 7에 돌을 놔줘'")
         print("종료하려면 'quit' 또는 'exit'를 입력하세요.")
 
-        # 대화 기록을 관리하는 리스트
         messages = [
             {
                 "role": "system",
@@ -68,7 +124,6 @@ async def run_gomoku_agent():
         ]
 
         while True:
-            # asyncio-compatible input
             prompt = await asyncio.get_event_loop().run_in_executor(
                 None, input, "\n👤 You: "
             )
@@ -80,7 +135,7 @@ async def run_gomoku_agent():
             messages.append({"role": "user", "content": prompt})
 
             try:
-                # 1. OpenRouter에 첫 번째 요청을 보냅니다.
+                # 첫 번째 요청
                 response = openrouter_client.chat.completions.create(
                     model=MODEL_NAME,
                     messages=messages,
@@ -88,15 +143,14 @@ async def run_gomoku_agent():
                     tool_choice="auto",
                 )
 
-                # 응답 유효성 검사
-                if not response or not response.choices or len(response.choices) == 0:
-                    print(f"❌ API 응답이 비어있습니다. 응답: {response}")
+                if not response or not response.choices:
+                    print("❌ API 응답이 비어있습니다.")
                     messages.pop()
                     continue
 
                 response_message = response.choices[0].message
 
-                # 2. 모델이 함수 호출을 결정했는지 확인합니다.
+                # --- 🧩 Tool 호출 시 ---
                 if response_message.tool_calls:
                     messages.append(response_message)
 
@@ -107,11 +161,30 @@ async def run_gomoku_agent():
                         print(f"⚡️ Calling function: {function_name}({function_args})")
 
                         try:
-                            function_response = mcp_client.call_tool(
+                            # MCP Tool 실행
+                            function_response = await mcp_client.call_tool(
                                 function_name, function_args
                             )
-                            # function_to_call = getattr(mcp_client, function_name)
-                            # function_response = await function_to_call(**function_args)
+
+                            # --- 🔄 state 갱신 후 send_state ---
+                            if function_name in [
+                                "place_stone",
+                                "reset_game",
+                                "get_state",
+                            ]:
+                                try:
+                                    # get_state 결과 가져오기
+                                    state_result = await mcp_client.call_tool(
+                                        "get_state"
+                                    )
+                                    json_string = state_result.content[0].text
+                                    state_data = GomokuState.model_validate_json(
+                                        json_string
+                                    )
+                                    send_state(state_data.model_dump())
+                                except Exception as e:
+                                    print(f"⚠️ 상태 전송 실패: {e}")
+
                         except Exception as e:
                             print(f"    - Function call error: {e}")
                             function_response = f"Error executing function: {e}"
@@ -125,38 +198,31 @@ async def run_gomoku_agent():
                             }
                         )
 
-                    # 3. 함수 실행 결과를 포함하여 OpenRouter에 두 번째 요청을 보냅니다.
+                    # 두 번째 요청
                     second_response = openrouter_client.chat.completions.create(
                         model=MODEL_NAME,
                         messages=messages,
                     )
 
-                    # 두 번째 응답 유효성 검사
-                    if (
-                        not second_response
-                        or not second_response.choices
-                        or len(second_response.choices) == 0
-                    ):
-                        print(f"❌ 두 번째 API 응답이 비어있습니다.")
+                    if not second_response or not second_response.choices:
+                        print("❌ 두 번째 API 응답이 비어있습니다.")
                         continue
 
                     final_response = second_response.choices[0].message.content
+                    if final_response:
+                        messages.append(
+                            {"role": "assistant", "content": final_response}
+                        )
+                        print(f"🤖 Agent: {final_response}")
 
-                    if not final_response:
-                        print("❌ 응답 내용이 비어있습니다.")
-                        continue
-
-                    messages.append({"role": "assistant", "content": final_response})
-                    print(f"🤖 Agent: {final_response}")
-
+                # --- 일반 대화 응답 ---
                 else:
                     final_response = response_message.content
                     messages.append({"role": "assistant", "content": final_response})
                     print(f"🤖 Agent: {final_response}")
 
             except Exception as e:
-                print(f"❌ API 호출 중 오류가 발생했습니다: {e}")
-                print(f"   오류 타입: {type(e).__name__}")
+                print(f"❌ API 호출 중 오류 발생: {e}")
                 import traceback
 
                 traceback.print_exc()

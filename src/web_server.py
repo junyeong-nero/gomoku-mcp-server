@@ -7,7 +7,7 @@ import uvicorn
 class WebManager:
     def __init__(self) -> None:
         self.app = FastAPI()
-        self.current_state: GomokuState | None = None  # 최신 상태를 저장
+        self.current_state: GomokuState | None = GomokuState()  # 최신 상태를 저장
         self.setup()
 
     def setup(self):
