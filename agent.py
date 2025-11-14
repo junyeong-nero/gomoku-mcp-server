@@ -3,12 +3,13 @@ import sys
 import json
 import asyncio
 import requests
-from typing import Any, Dict
+
 from openai import OpenAI
 
 from server import get_mcp_server
 from client import get_mcp_client
 from schema import GomokuState
+from utils import *
 
 # --- 설정 ---
 API_URL = "http://127.0.0.1:8000/api/state"
@@ -40,61 +41,6 @@ def send_state(state_data: dict):
             print("서버 응답 내용:", e.response.text)
 
 
-def to_openai_schema(tool) -> Dict[str, Any]:
-    # 입력 스키마 추출
-    raw_schema = (
-        getattr(tool, "inputSchema", None)
-        or getattr(tool, "input_schema", None)
-        or getattr(tool, "parameters", None)
-    )
-
-    # 다양한 형태를 dict(JSON-Schema) 로 통일
-    if raw_schema is None:
-        schema: Dict[str, Any] = {
-            "type": "object",
-            "properties": {},
-            "additionalProperties": True,
-        }
-
-    elif isinstance(raw_schema, dict):
-        schema = raw_schema
-
-    elif hasattr(raw_schema, "model_json_schema"):  # Pydantic v2 모델
-        schema = raw_schema.model_json_schema()
-
-    elif isinstance(raw_schema, list):  # list[dict]
-        props, required = {}, []
-        for p in raw_schema:
-            props[p["name"]] = {
-                "type": p["type"],
-                "description": p.get("description", ""),
-            }
-            if p.get("required", True):
-                required.append(p["name"])
-        schema = {"type": "object", "properties": props}
-        if required:
-            schema["required"] = required
-
-    else:  # 알 수 없는 형식
-        schema = {"type": "object", "properties": {}, "additionalProperties": True}
-
-    # 필수 키 보강
-    schema.setdefault("type", "object")
-    schema.setdefault("properties", {})
-    if "required" not in schema:
-        schema["required"] = list(
-            schema["properties"].keys()
-        )  # 모두 optional 로 두고 싶다면 []
-
-    # OpenAI 툴 JSON 반환
-    return {
-        "type": "function",
-        "name": tool.name,
-        "description": getattr(tool, "description", ""),
-        "parameters": schema,
-    }
-
-
 async def run_gomoku_agent():
     """OpenRouter와 FastMCP를 사용하여 오목 게임을 플레이하는 에이전트"""
 
@@ -105,9 +51,17 @@ async def run_gomoku_agent():
 
         print(f"✅ Gomoku 웹 서버를 생성했습니다.")
 
-        gomoku_tools = await mcp_client.list_tools()
-        # gomoku_tools = [to_openai_schema(tool) for tool in gomoku_tools]
-        print("✅ Gomoku 서버로부터 사용 가능한 함수(Tools) 목록을 가져왔습니다.")
+        # MCP 도구 목록 가져오기
+        mcp_tools_raw = await mcp_client.list_tools()
+        gomoku_tools = [to_openrouter_schema(tool) for tool in mcp_tools_raw]
+
+        print("\n" + "=" * 60)
+        print("🔧 OpenAI 형식으로 변환된 도구 목록:")
+        print("=" * 60)
+        for i, tool in enumerate(gomoku_tools, 1):
+            print(f"\n[도구 {i}]")
+            print(json.dumps(tool, indent=2, ensure_ascii=False))
+        print("=" * 60)
 
         print("\n==============================================")
         print(f"   Gomoku AI Agent (Model: {MODEL_NAME})   ")
@@ -166,24 +120,16 @@ async def run_gomoku_agent():
                                 function_name, function_args
                             )
 
-                            # --- 🔄 state 갱신 후 send_state ---
-                            if function_name in [
-                                "place_stone",
-                                "reset_game",
-                                "get_state",
-                            ]:
-                                try:
-                                    # get_state 결과 가져오기
-                                    state_result = await mcp_client.call_tool(
-                                        "get_state"
-                                    )
-                                    json_string = state_result.content[0].text
-                                    state_data = GomokuState.model_validate_json(
-                                        json_string
-                                    )
-                                    send_state(state_data.model_dump())
-                                except Exception as e:
-                                    print(f"⚠️ 상태 전송 실패: {e}")
+                            try:
+                                # get_state 결과 가져오기
+                                state_result = await mcp_client.call_tool("get_state")
+                                json_string = state_result.content[0].text
+                                state_data = GomokuState.model_validate_json(
+                                    json_string
+                                )
+                                send_state(state_data.model_dump())
+                            except Exception as e:
+                                print(f"⚠️ 상태 전송 실패: {e}")
 
                         except Exception as e:
                             print(f"    - Function call error: {e}")
