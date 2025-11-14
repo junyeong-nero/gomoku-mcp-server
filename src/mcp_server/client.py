@@ -1,4 +1,4 @@
-from server import get_mcp_server
+from mcp_server.server import get_mcp_server
 from fastmcp import Client
 
 mcp_client = Client(get_mcp_server())

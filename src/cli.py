@@ -6,8 +6,8 @@ import requests
 
 from openai import OpenAI
 
-from mcp.server import get_mcp_server
-from mcp.client import get_mcp_client
+from mcp_server.server import get_mcp_server
+from mcp_server.client import get_mcp_client
 from schema import GomokuState
 from utils import *
 
@@ -26,19 +26,6 @@ openrouter_client = OpenAI(
 )
 
 MODEL_NAME = "google/gemini-2.5-flash"
-
-
-def send_state(state_data: dict):
-    """현재 게임 상태를 FastAPI 서버로 POST"""
-    try:
-        response = requests.post(API_URL, json=state_data)
-        response.raise_for_status()
-        print("✅ 상태 업데이트 성공!")
-        print("서버 응답:", response.json())
-    except requests.exceptions.RequestException as e:
-        print(f"❌ 상태 업데이트 실패: {e}")
-        if e.response:
-            print("서버 응답 내용:", e.response.text)
 
 
 async def run_gomoku_agent():
@@ -119,17 +106,6 @@ async def run_gomoku_agent():
                             function_response = await mcp_client.call_tool(
                                 function_name, function_args
                             )
-
-                            try:
-                                # get_state 결과 가져오기
-                                state_result = await mcp_client.call_tool("get_state")
-                                json_string = state_result.content[0].text
-                                state_data = GomokuState.model_validate_json(
-                                    json_string
-                                )
-                                send_state(state_data.model_dump())
-                            except Exception as e:
-                                print(f"⚠️ 상태 전송 실패: {e}")
 
                         except Exception as e:
                             print(f"    - Function call error: {e}")

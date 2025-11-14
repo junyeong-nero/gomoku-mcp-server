@@ -1,3 +1,19 @@
+
+# Install
+
+```shell
+uv sync
+uv pip install -e .
+```
+
+# Run
+
+```
+uv run src/cli.py
+uv run src/gui.py
+```
+
+
 # configure
 
 ```python
