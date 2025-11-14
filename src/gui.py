@@ -13,6 +13,7 @@ from openai import OpenAI
 from mcp_server.client import get_mcp_client
 from schema import GomokuState
 from utils import *
+from models import AVAILABLE_MODELS
 
 # --- 설정 ---
 api_key = os.environ.get("OPENROUTER_API_KEY")
@@ -24,14 +25,6 @@ openrouter_client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
     api_key=api_key,
 )
-
-# 사용 가능한 모델 목록
-AVAILABLE_MODELS = [
-    {"id": "google/gemini-2.5-flash", "name": "Gemini 2.5 Flash"},
-    {"id": "anthropic/claude-3.5-sonnet", "name": "Claude 3.5 Sonnet"},
-    {"id": "openai/gpt-4-turbo", "name": "GPT-4 Turbo"},
-    {"id": "meta-llama/llama-3.1-70b-instruct", "name": "Llama 3.1 70B"},
-]
 
 app = FastAPI()
 
@@ -179,9 +172,23 @@ async def startup_event():
     await game_manager.initialize_mcp()
 
 
+@app.get("/models")
+async def get_models():
+    """사용 가능한 모델 목록 반환"""
+    return {"models": AVAILABLE_MODELS}
+
+
 @app.get("/", response_class=HTMLResponse)
 async def get_homepage():
     """메인 HTML 페이지"""
+    # 모델 옵션을 동적으로 생성
+    model_options = "\n".join(
+        [
+            f'<option value="{model["id"]}">{model["name"]}</option>'
+            for model in AVAILABLE_MODELS
+        ]
+    )
+
     html_content = """
     <!DOCTYPE html>
     <html lang="ko">
@@ -508,10 +515,7 @@ async def get_homepage():
                     <div class="model-selector">
                         <label>Model:</label>
                         <select id="modelSelect">
-                            <option value="google/gemini-2.5-flash">Gemini 2.5 Flash</option>
-                            <option value="anthropic/claude-3.5-sonnet">Claude 3.5 Sonnet</option>
-                            <option value="openai/gpt-4-turbo">GPT-4 Turbo</option>
-                            <option value="meta-llama/llama-3.1-70b-instruct">Llama 3.1 70B</option>
+                            {model_options}
                         </select>
                     </div>
                 </div>
@@ -760,7 +764,7 @@ async def get_homepage():
     </body>
     </html>
     """
-    return HTMLResponse(content=html_content)
+    return HTMLResponse(content=html_content.replace("{model_options}", model_options))
 
 
 @app.websocket("/ws")
