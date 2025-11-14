@@ -1,5 +1,5 @@
 import pytest
-from gomoku import Gomoku
+from game.gomoku import Gomoku
 from schema import GomokuState, Stone
 
 

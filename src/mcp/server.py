@@ -1,5 +1,5 @@
 from fastmcp import FastMCP
-from gomoku import Gomoku
+from game.gomoku import Gomoku
 from schema import GomokuState
 
 mcp_server = FastMCP(name="Gomoku MCP Server")
