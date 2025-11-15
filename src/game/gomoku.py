@@ -38,6 +38,15 @@ class Gomoku:
     def get_history(self) -> list[GomokuState]:
         return self._history
 
+    def get_valid_moves(self) -> list[tuple[int, int]]:
+        """Gets a list of valid moves (empty cells)."""
+        valid_moves = []
+        for y in range(HEIGHT):
+            for x in range(WIDTH):
+                if self._state.board[y][x] is None:
+                    valid_moves.append((x, y))
+        return valid_moves
+
     def _check_win(self, x: int, y: int) -> bool:
         stone_type: Optional[TurnType] = self._state.board[y][x]
         if stone_type is None:
