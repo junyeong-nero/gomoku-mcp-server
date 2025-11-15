@@ -14,6 +14,7 @@ from mcp_server.client import get_mcp_client
 from schema import GomokuState
 from utils import *
 from models import AVAILABLE_MODELS
+from prompts.system_prompt import SYSTEM_PROMPT
 
 # --- 설정 ---
 api_key = os.environ.get("OPENROUTER_API_KEY")
@@ -38,7 +39,7 @@ class GameManager:
         self.messages = [
             {
                 "role": "system",
-                "content": "You are a helpful assistant that plays a game of Gomoku using the provided tools.",
+                "content": SYSTEM_PROMPT,
             }
         ]
         self.current_model = AVAILABLE_MODELS[0]["id"]
@@ -57,7 +58,15 @@ class GameManager:
     async def process_message(self, user_message: str, model: str) -> dict:
         """사용자 메시지를 처리하고 AI 응답 반환"""
         self.current_model = model
-        self.messages.append({"role": "user", "content": user_message})
+
+        # --- 수정된 부분: 메시지에 현재 턴 정보 추가 ---
+        current_turn = self.current_state.turn
+        if "WIN" in current_turn:
+            augmented_message = f"The game is over. The result is: {current_turn}. User request: '{user_message}'"
+        else:
+            augmented_message = f"It is currently {current_turn}'s turn. You are playing as {current_turn}. Analyze the board and respond to the user's request: '{user_message}'"
+        self.messages.append({"role": "user", "content": augmented_message})
+        # --- 수정 끝 ---
 
         try:
             # 첫 번째 요청

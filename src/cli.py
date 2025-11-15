@@ -10,6 +10,7 @@ from mcp_server.server import get_mcp_server
 from mcp_server.client import get_mcp_client
 from schema import GomokuState
 from utils import *
+from prompts.system_prompt import SYSTEM_PROMPT
 
 # --- 설정 ---
 API_URL = "http://127.0.0.1:8000/api/state"
@@ -60,7 +61,7 @@ async def run_gomoku_agent():
         messages = [
             {
                 "role": "system",
-                "content": "You are a helpful assistant that plays a game of Gomoku using the provided tools.",
+                "content": SYSTEM_PROMPT,
             }
         ]
 
