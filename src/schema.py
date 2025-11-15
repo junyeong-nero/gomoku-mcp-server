@@ -1,9 +1,12 @@
 from pydantic import BaseModel, Field
 from typing import Literal, List, Optional
 
-TurnType = Literal["WHITE", "BLACK"]
-TurnTypeWin = Literal["WHITE_WIN", "BLACK_WIN"]
-TurnTypeAll = Literal[TurnType, TurnTypeWin]
+PLAYER_TURNS = ("BLACK", "WHITE")
+WIN_TURNS = tuple(f"{p}_WIN" for p in PLAYER_TURNS)
+
+TurnType = Literal[*PLAYER_TURNS]
+TurnTypeWin = Literal[*WIN_TURNS]
+TurnTypeAll = Literal[*PLAYER_TURNS, *WIN_TURNS]
 
 WIDTH, HEIGHT = 15, 15
 

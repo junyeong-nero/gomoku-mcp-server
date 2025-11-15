@@ -1,4 +1,4 @@
-from schema import GomokuState, Stone, WIDTH, HEIGHT, TurnType
+from schema import GomokuState, Stone, WIDTH, HEIGHT, TurnTypeAll
 from typing import Optional
 
 
@@ -14,15 +14,17 @@ class Gomoku:
     def get_state(self) -> GomokuState:
         return self._state
 
-    def set_stone(self, x: int, y: int) -> GomokuState:
+    def set_stone(self, x: int, y: int, turn: str) -> GomokuState:
         if "WIN" in self._state.turn:
             raise ValueError("Game is already over")
         if not (0 <= x < WIDTH and 0 <= y < HEIGHT):
             raise ValueError("Coordinates out of bounds")
         if self._state.board[y][x] is not None:
             raise ValueError("Cell is already occupied")
+        if self._state.turn != turn:
+            raise ValueError(f"It is not {turn}'s turn.")
 
-        stone_type: TurnType = "BLACK" if self._state.turn == "BLACK" else "WHITE"
+        stone_type: TurnType = turn
         stone = Stone(x=x, y=y, type=stone_type)
         self._state.stones.append(stone)
         self._state.board[y][x] = stone_type

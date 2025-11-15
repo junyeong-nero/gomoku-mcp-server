@@ -1,6 +1,6 @@
 from fastmcp import FastMCP
 from game.gomoku import Gomoku
-from schema import GomokuState
+from schema import GomokuState, TurnTypeAll
 
 mcp_server = FastMCP(name="Gomoku MCP Server")
 
@@ -57,22 +57,24 @@ def get_state() -> GomokuState:
 
 
 @mcp_server.tool
-def set_stone(x: int, y: int) -> GomokuState:
+def set_stone(x: int, y: int, turn: str) -> GomokuState:
     """
-    Places a stone for the current player at the specified coordinates.
+    Places a stone for the specified player at the specified coordinates.
 
     Args:
         x (int): The horizontal coordinate (0-14) of the cell to place the stone on.
         y (int): The vertical coordinate (0-14) of the cell to place the stone on.
+        turn (str): The player ("BLACK" or "WHITE") whose stone is to be placed.
 
     Returns:
         GomokuState: The updated game state after the move.
 
     Raises:
         ValueError: If the move is invalid (e.g., cell is already occupied,
-                    coordinates are out of bounds, or the game is already over).
+                    coordinates are out of bounds, it's not the specified player's turn,
+                    or the game is already over).
     """
-    return gomoku_game.set_stone(x, y)
+    return gomoku_game.set_stone(x, y, turn)
 
 
 @mcp_server.tool
@@ -103,12 +105,12 @@ def get_valid_moves() -> list[tuple[int, int]]:
 
 
 @mcp_server.tool
-def get_turn() -> str:
+def get_turn() -> TurnTypeAll:
     """
     Gets the current turn (BLACK, WHITE, BLACK_WIN, WHITE_WIN).
 
     Returns:
-        str: A string indicating whose turn it is or if the game has ended.
+        TurnTypeAll: A string indicating whose turn it is or if the game has ended.
     """
     return gomoku_game.get_turn()
 
