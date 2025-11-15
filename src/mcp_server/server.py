@@ -99,8 +99,18 @@ def get_valid_moves() -> list[tuple[int, int]]:
     Returns:
         list[tuple[int, int]]: A list of (x, y) coordinate tuples for each empty cell.
     """
-
     return gomoku_game.get_valid_moves()
+
+
+@mcp_server.tool
+def get_turn() -> str:
+    """
+    Gets the current turn (BLACK, WHITE, BLACK_WIN, WHITE_WIN).
+
+    Returns:
+        str: A string indicating whose turn it is or if the game has ended.
+    """
+    return gomoku_game.get_turn()
 
 
 @mcp_server.tool

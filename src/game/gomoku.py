@@ -47,6 +47,10 @@ class Gomoku:
                     valid_moves.append((x, y))
         return valid_moves
 
+    def get_turn(self) -> TurnTypeAll:
+        """Gets the current turn (BLACK, WHITE, BLACK_WIN, WHITE_WIN)."""
+        return self._state.turn
+
     def _check_win(self, x: int, y: int) -> bool:
         stone_type: Optional[TurnType] = self._state.board[y][x]
         if stone_type is None:
