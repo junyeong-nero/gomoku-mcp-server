@@ -317,6 +317,11 @@ async def get_homepage():
                 background-color: rgba(0, 0, 0, 0.05);
             }
             
+            .cell.disabled {
+                cursor: not-allowed;
+                opacity: 0.5;
+            }
+            
             .cell-coordinate {
                 position: absolute;
                 bottom: -20px;
@@ -386,9 +391,9 @@ async def get_homepage():
                 <div class="messages" id="messages">
                     <div class="message system">
                         <div class="message-content">
-                            오목 게임에 대한 명령을 자연어로 입력하세요.<br>
-                            예: "게임 시작해줘", "지금 보드 상태 보여줘", "7, 7에 돌을 놔줘"<br>
-                            💡 바둑판을 클릭하면 좌표가 자동으로 입력됩니다!
+                            오목 게임에 오신 것을 환영합니다!<br>
+                            💡 바둑판을 클릭하여 돌을 놓으세요. AI가 자동으로 다음 수를 둡니다.<br>
+                            채팅으로 게임 명령을 입력할 수도 있습니다. (예: "게임 시작", "보드 상태 보여줘")
                         </div>
                     </div>
                 </div>
@@ -461,28 +466,48 @@ async def get_homepage():
                         coordinate.textContent = `(${c}, ${r})`;
                         cell.appendChild(coordinate);
                         
-                        // 클릭 이벤트 추가
-                        cell.addEventListener('click', () => {
-                            const currentText = messageInput.value.trim();
-                            const coordinateText = `${c}, ${r}`;
+                        // 클릭 이벤트 추가 - 바둑돌 직접 놓기
+                        cell.addEventListener('click', async () => {
+                            if (isProcessing) return;
                             
-                            if (currentText) {
-                                messageInput.value = `${currentText} ${coordinateText}`;
-                            } else {
-                                messageInput.value = coordinateText;
-                            }
+                            // 이미 돌이 놓여있는지 확인
+                            if (cell.querySelector('.stone')) return;
                             
-                            // 입력창에 포커스
-                            messageInput.focus();
+                            isProcessing = true;
+                            disableBoard();
                             
-                            // 높이 조정
-                            messageInput.style.height = 'auto';
-                            messageInput.style.height = Math.min(messageInput.scrollHeight, 120) + 'px';
+                            // 사용자 액션 메시지
+                            addMessage('user', `돌을 (${c}, ${r})에 놓습니다.`);
+                            addLoadingMessage();
+                            
+                            // 서버에 돌 놓기 요청
+                            ws.send(JSON.stringify({
+                                action: 'place_stone',
+                                x: c,
+                                y: r,
+                                model: modelSelect.value
+                            }));
                         });
                         
                         boardElement.appendChild(cell);
                     }
                 }
+            }
+            
+            // 바둑판 비활성화
+            function disableBoard() {
+                document.querySelectorAll('.cell').forEach(cell => {
+                    cell.classList.add('disabled');
+                });
+            }
+            
+            // 바둑판 활성화
+            function enableBoard() {
+                document.querySelectorAll('.cell').forEach(cell => {
+                    if (!cell.querySelector('.stone')) {
+                        cell.classList.remove('disabled');
+                    }
+                });
             }
             
             // 바둑판 업데이트
@@ -505,6 +530,7 @@ async def get_homepage():
                             const stone = document.createElement('div');
                             stone.className = `stone ${stoneType.toLowerCase()}`;
                             cell.appendChild(stone);
+                            cell.classList.add('disabled');
                         }
                     }
                 }
@@ -558,7 +584,33 @@ async def get_homepage():
             ws.onmessage = (event) => {
                 const data = JSON.parse(event.data);
                 
-                if (data.type === 'response') {
+                if (data.type === 'stone_placed') {
+                    // 사용자가 놓은 돌 반영
+                    removeLoadingMessage();
+                    if (data.state) {
+                        updateBoard(data.state);
+                    }
+                    addMessage('system', '당신의 차례가 끝났습니다. AI가 수를 두는 중...');
+                    addLoadingMessage();
+                    
+                } else if (data.type === 'ai_response') {
+                    // AI가 놓은 돌 반영
+                    removeLoadingMessage();
+                    
+                    if (data.error) {
+                        addMessage('system', `❌ Error: ${data.error}`);
+                    } else {
+                        addMessage('assistant', data.response, data.tool_calls);
+                        if (data.state) {
+                            updateBoard(data.state);
+                        }
+                    }
+                    
+                    isProcessing = false;
+                    enableBoard();
+                    
+                } else if (data.type === 'response') {
+                    // 일반 채팅 응답
                     removeLoadingMessage();
                     
                     if (data.error) {
@@ -598,6 +650,7 @@ async def get_homepage():
                 addLoadingMessage();
                 
                 ws.send(JSON.stringify({
+                    action: 'chat',
                     message: message,
                     model: modelSelect.value
                 }));
@@ -640,14 +693,51 @@ async def websocket_endpoint(websocket: WebSocket):
             data = await websocket.receive_text()
             message_data = json.loads(data)
 
-            user_message = message_data.get("message")
+            action = message_data.get("action")
             model = message_data.get("model", AVAILABLE_MODELS[0]["id"])
 
-            # 메시지 처리
-            result = await game_manager.process_message(user_message, model)
+            if action == "place_stone":
+                # 사용자가 바둑판에 돌을 놓음
+                x = message_data.get("x")
+                y = message_data.get("y")
 
-            # 결과 전송
-            await websocket.send_text(json.dumps({"type": "response", **result}))
+                try:
+                    # 1. 사용자가 돌 놓기
+                    await game_manager.set_stone(x, y)
+
+                    # 사용자 돌 놓기 결과 전송
+                    await websocket.send_text(
+                        json.dumps(
+                            {
+                                "type": "stone_placed",
+                                "state": game_manager.current_state.model_dump(),
+                            }
+                        )
+                    )
+
+                    # 2. AI가 상대방으로 수 두기
+                    game_manager.current_model = model
+                    ai_result = await game_manager.process_ai_turn()
+
+                    # AI 응답 전송
+                    await websocket.send_text(
+                        json.dumps({"type": "ai_response", **ai_result})
+                    )
+
+                except Exception as e:
+                    print(f"❌ 돌 놓기 오류: {e}")
+                    import traceback
+
+                    traceback.print_exc()
+                    await websocket.send_text(
+                        json.dumps({"type": "ai_response", "error": str(e)})
+                    )
+
+            elif action == "chat":
+                # 일반 채팅 메시지 처리
+                user_message = message_data.get("message")
+                result = await game_manager.process_message(user_message, model)
+                await websocket.send_text(json.dumps({"type": "response", **result}))
 
     except WebSocketDisconnect:
         print("🔌 WebSocket 연결 종료")
