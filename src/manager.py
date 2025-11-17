@@ -56,13 +56,17 @@ class GameManager:
         self.messages.append({"role": "user", "content": user_prompt})
 
         try:
-            # 첫 번째 요청
-            response = self.openrouter_client.chat.completions.create(
-                model=self.current_model,
-                messages=self.messages,
-                tools=self.gomoku_tools,
-                tool_choice="required",
-            )
+            # 반복적으로 도구를 호출하도록 루프 사용
+            max_iterations = 10  # 무한 루프 방지
+            iteration = 0
+
+            while iteration < max_iterations:
+                response = self.openrouter_client.chat.completions.create(
+                    model=self.current_model,
+                    messages=self.messages,
+                    tools=self.gomoku_tools,
+                    tool_choice="auto",  # auto로 변경하여 LLM이 판단하도록
+                )
 
             if not response or not response.choices:
                 return {"error": "API 응답이 비어있습니다."}
