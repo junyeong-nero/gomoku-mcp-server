@@ -65,85 +65,76 @@ class GameManager:
                     model=self.current_model,
                     messages=self.messages,
                     tools=self.gomoku_tools,
-                    tool_choice="auto",  # auto로 변경하여 LLM이 판단하도록
+                    tool_choice="auto",
                 )
 
-            if not response or not response.choices:
-                return {"error": "API 응답이 비어있습니다."}
+                if not response or not response.choices:
+                    return {"error": "API 응답이 비어있습니다."}
 
-            response_message = response.choices[0].message
+                response_message = response.choices[0].message
 
-            # Tool 호출 시
-            if response_message.tool_calls:
-                self.messages.append(response_message)
-                tool_results = []
+                # Tool 호출 시
+                if response_message.tool_calls:
+                    self.messages.append(response_message)
+                    tool_results = []
 
-                for tool_call in response_message.tool_calls:
-                    function_name = tool_call.function.name
-                    function_args = json.loads(tool_call.function.arguments)
+                    for tool_call in response_message.tool_calls:
+                        function_name = tool_call.function.name
+                        function_args = json.loads(tool_call.function.arguments)
 
-                    try:
-                        # MCP Tool 실행
-                        function_response = await self.mcp_client.call_tool(
-                            function_name, function_args
-                        )
+                        try:
+                            # MCP Tool 실행
+                            function_response = await self.mcp_client.call_tool(
+                                function_name, function_args
+                            )
 
-                        tool_results.append(
+                            tool_results.append(
+                                {
+                                    "name": function_name,
+                                    "args": function_args,
+                                    "result": str(function_response),
+                                }
+                            )
+
+                            await self.update_state()
+
+                        except Exception as e:
+                            function_response = f"Error executing function: {e}"
+                            tool_results.append(
+                                {
+                                    "name": function_name,
+                                    "args": function_args,
+                                    "error": str(e),
+                                }
+                            )
+
+                        self.messages.append(
                             {
+                                "tool_call_id": tool_call.id,
+                                "role": "tool",
                                 "name": function_name,
-                                "args": function_args,
-                                "result": str(function_response),
+                                "content": str(function_response),
                             }
                         )
 
-                        await self.update_state()
+                    # 다음 iteration으로
+                    iteration += 1
+                    continue
 
-                    except Exception as e:
-                        function_response = f"Error executing function: {e}"
-                        tool_results.append(
-                            {
-                                "name": function_name,
-                                "args": function_args,
-                                "error": str(e),
-                            }
-                        )
-
-                    self.messages.append(
-                        {
-                            "tool_call_id": tool_call.id,
-                            "role": "tool",
-                            "name": function_name,
-                            "content": str(function_response),
-                        }
-                    )
-
-                # 두 번째 요청
-                second_response = self.openrouter_client.chat.completions.create(
-                    model=self.current_model,
-                    messages=self.messages,
-                )
-
-                if second_response and second_response.choices:
-                    final_response = second_response.choices[0].message.content
+                # 일반 대화 응답 (tool_calls 없음)
+                else:
+                    final_response = response_message.content
                     self.messages.append(
                         {"role": "assistant", "content": final_response}
                     )
 
                     return {
                         "response": final_response,
-                        "tool_calls": tool_results,
                         "state": self.current_state.model_dump(),
                     }
 
-            # 일반 대화 응답
-            else:
-                final_response = response_message.content
-                self.messages.append({"role": "assistant", "content": final_response})
-
-                return {
-                    "response": final_response,
-                    "state": self.current_state.model_dump(),
-                }
+            # max_iterations 초과
+            return {"error": "최대 반복 횟수를 초과했습니다."}
 
         except Exception as e:
             print(f"❌ API 호출 중 오류 발생: {e}")
