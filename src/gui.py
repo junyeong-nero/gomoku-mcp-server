@@ -313,13 +313,12 @@ async def get_homepage():
                 transition: background-color 0.2s;
             }
             
-            .cell:hover {
+            .cell:hover:not(.disabled) {
                 background-color: rgba(0, 0, 0, 0.05);
             }
             
             .cell.disabled {
                 cursor: not-allowed;
-                opacity: 0.5;
             }
             
             .cell-coordinate {
@@ -349,6 +348,7 @@ async def get_homepage():
                 box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
                 position: relative;
                 z-index: 10;
+                opacity: 1 !important;
             }
             
             .stone.black {
