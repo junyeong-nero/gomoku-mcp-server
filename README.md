@@ -24,7 +24,14 @@ uv run src/gui.py
 
 # Sample
 
-![image](images/screenshot1.png)
+- gemini-2.5-flash
+![image](images/gemini-2.5-flash.png)
+
+- grok4-fast
+![image](images/grok4-fast.png)
+
+- kimi-k2-thinking
+![image](images/kimi-k2-thinking.png)
 
 
 # configure
@@ -43,5 +50,5 @@ uv run src/gui.py
 
 # TODO
 
-- [ ] Prompt Engineering for MCP tools
+- [-] Prompt Engineering for MCP tools
 - [ ] Two Player mode with LLMs
